@@ -1,0 +1,40 @@
+name: Evergreen scheduler
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        run: npm install
+
+      - name: Run
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+          AIRTABLE_POSTS_TABLE: ${{ secrets.AIRTABLE_POSTS_TABLE }}
+          AIRTABLE_JOBS_TABLE: ${{ secrets.AIRTABLE_JOBS_TABLE }}
+          AIRTABLE_PUBLISHED_TABLE: ${{ secrets.AIRTABLE_PUBLISHED_TABLE }}
+
+          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+
+          TIMEZONE: America/New_York
+          RUN_HOURS: "8,16"
+          LOOKBACK_DAYS: "90"
+        run: node src/run.js
