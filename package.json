@@ -1,0 +1,13 @@
+{
+  "name": "evergreen-content-reposter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/run.js"
+  },
+  "dependencies": {
+    "airtable": "^0.12.2",
+    "luxon": "^3.4.4"
+  }
+}
