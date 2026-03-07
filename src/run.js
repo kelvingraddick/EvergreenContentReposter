@@ -48,13 +48,23 @@ function buildXPartsFromPostText(parts) {
 
 async function main() {
   const timezone = process.env.TIMEZONE || "America/New_York";
+  const runMinutesRaw = process.env.RUN_MINUTES || "";
   const runHours = (process.env.RUN_HOURS || "8,16")
     .split(",")
     .map(Number)
     .filter(n => !Number.isNaN(n));
+  const runMinutes = runMinutesRaw
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(Number)
+    .filter(n => !Number.isNaN(n) && n >= 0 && n <= 59);
 
   if (runHours.length === 0) {
     throw new Error("RUN_HOURS is empty or invalid.");
+  }
+  if (runMinutesRaw.trim().length > 0 && runMinutes.length === 0) {
+    throw new Error("RUN_MINUTES is set but invalid.");
   }
 
   const nowNY = DateTime.now().setZone(timezone);
@@ -65,8 +75,8 @@ async function main() {
     return;
   }
 
-  if (nowNY.minute !== 0) {
-    console.log(`Not minute 0 (NY): ${nowNY.toISO()}`);
+  if (runMinutes.length > 0 && !runMinutes.includes(nowNY.minute)) {
+    console.log(`Not in RUN_MINUTES (NY): ${nowNY.toISO()}`);
     return;
   }
 
