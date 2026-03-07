@@ -37,14 +37,13 @@ class AirtableClient{
  async updateJob(jobRecordId,fields){
   return await this.base(this.jobsTable).update(jobRecordId,fields);
  }
- async createPublished(jobRecordId,platform,isSuccess,message,platformPostId,nowUTCISO){
+ async createPublished(jobRecordId,platform,isSuccess,message,platformPostId){
   const fields={
     Job:[jobRecordId],
     Platform:platform,
     IsSuccess:!!isSuccess,
     ErrorMessage:message||'',
-    PlatformPostId:platformPostId||'',
-    Time:nowUTCISO
+    PlatformPostId:platformPostId||''
   };
   return await this.base(this.publishedTable).create(fields);
  }

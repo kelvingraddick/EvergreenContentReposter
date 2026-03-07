@@ -109,12 +109,11 @@ async function main() {
       "Threads",
       threadsOk,
       threadsRes?.error || "",
-      threadsId,
-      isoNow()
+      threadsId
     );
   } catch (err) {
     threadsOk = false;
-    await airtable.createPublished(job.id, "Threads", false, String(err), "", isoNow());
+    await airtable.createPublished(job.id, "Threads", false, String(err), "");
   }
 
   try {
@@ -127,12 +126,11 @@ async function main() {
       "X",
       xOk,
       xRes?.error || "",
-      xId,
-      isoNow()
+      xId
     );
   } catch (err) {
     xOk = false;
-    await airtable.createPublished(job.id, "X", false, String(err), "", isoNow());
+    await airtable.createPublished(job.id, "X", false, String(err), "");
   }
 
   const updateCooldown = {};
