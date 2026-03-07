@@ -46,6 +46,36 @@ function buildXPartsFromPostText(parts) {
   return out;
 }
 
+function buildPlatformLink(platform, postId, providedLink = "") {
+  if (providedLink) return providedLink;
+  if (!postId) return "";
+  if (/^https?:\/\//i.test(postId)) return postId;
+
+  if (platform === "Threads") {
+    const username = (process.env.THREADS_USERNAME || "").trim().replace(/^@/, "");
+    if (username) {
+      return `https://www.threads.net/@${username}/post/${encodeURIComponent(postId)}`;
+    }
+    return `https://www.threads.net/t/${encodeURIComponent(postId)}`;
+  }
+
+  if (platform === "X") {
+    return `https://x.com/i/web/status/${encodeURIComponent(postId)}`;
+  }
+
+  return "";
+}
+
+function logPostParts(platform, parts) {
+  if (!Array.isArray(parts) || parts.length === 0) {
+    console.log(`[${platform}] No parts generated.`);
+    return;
+  }
+  parts.forEach((part, idx) => {
+    console.log(`[${platform}] Part ${idx + 1}/${parts.length}: ${part}`);
+  });
+}
+
 async function main() {
   const nowUTC = DateTime.now().toUTC();
   const nowUTCISO = isoNow();
@@ -92,6 +122,11 @@ async function main() {
   const threadsParts = buildThreadsPartsFromPostText(partsFromDelimiters);
   const xParts = buildXPartsFromPostText(partsFromDelimiters);
 
+  console.log(`Selected post record: ${postRecordId}`);
+  console.log(`Selected post text:\n${text}`);
+  logPostParts("Threads", threadsParts);
+  logPostParts("X", xParts);
+
   const job = await airtable.createJob(runKey, postRecordId, nowUTCISO);
 
   let threadsOk = false;
@@ -103,6 +138,7 @@ async function main() {
     const threadsRes = await postThreads(threadsParts);
     threadsOk = !!threadsRes?.ok;
     threadsId = threadsRes?.postId || "";
+    const threadsLink = buildPlatformLink("Threads", threadsId, threadsRes?.link || threadsRes?.url || "");
 
     await airtable.createPublished(
       job.id,
@@ -111,8 +147,15 @@ async function main() {
       threadsRes?.error || "",
       threadsId
     );
+
+    if (threadsOk) {
+      console.log(`[Threads] Published successfully. Post ID: ${threadsId || "n/a"}. Link: ${threadsLink || "n/a"}`);
+    } else {
+      console.warn(`[Threads] Publish failed. Error: ${threadsRes?.error || "Unknown error."}`);
+    }
   } catch (err) {
     threadsOk = false;
+    console.warn(`[Threads] Publish threw an error: ${String(err)}`);
     await airtable.createPublished(job.id, "Threads", false, String(err), "");
   }
 
@@ -120,6 +163,7 @@ async function main() {
     const xRes = await postX(xParts);
     xOk = !!xRes?.ok;
     xId = xRes?.postId || "";
+    const xLink = buildPlatformLink("X", xId, xRes?.link || xRes?.url || "");
 
     await airtable.createPublished(
       job.id,
@@ -128,8 +172,15 @@ async function main() {
       xRes?.error || "",
       xId
     );
+
+    if (xOk) {
+      console.log(`[X] Published successfully. Post ID: ${xId || "n/a"}. Link: ${xLink || "n/a"}`);
+    } else {
+      console.warn(`[X] Publish failed. Error: ${xRes?.error || "Unknown error."}`);
+    }
   } catch (err) {
     xOk = false;
+    console.warn(`[X] Publish threw an error: ${String(err)}`);
     await airtable.createPublished(job.id, "X", false, String(err), "");
   }
 
