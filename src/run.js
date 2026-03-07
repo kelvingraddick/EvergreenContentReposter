@@ -53,10 +53,11 @@ function buildPlatformLink(platform, postId, providedLink = "") {
 
   if (platform === "Threads") {
     const username = (process.env.THREADS_USERNAME || "").trim().replace(/^@/, "");
-    if (username) {
-      return `https://www.threads.net/@${username}/post/${encodeURIComponent(postId)}`;
+    const isNumericId = /^\d+$/.test(String(postId));
+    if (username && !isNumericId) {
+      return `https://www.threads.com/@${encodeURIComponent(username)}/post/${encodeURIComponent(postId)}`;
     }
-    return `https://www.threads.net/t/${encodeURIComponent(postId)}`;
+    return `https://www.threads.com/t/${encodeURIComponent(postId)}`;
   }
 
   if (platform === "X") {

@@ -31,6 +31,17 @@ function buildThreadsRequestError(status, textResp) {
   return `Threads API error ${status}: ${apiMessage}`;
 }
 
+function sanitizeThreadsUsername(username) {
+  return (username || "").trim().replace(/^@/, "");
+}
+
+function buildThreadsLinkFromShortcode(username, shortcode) {
+  const safeUsername = sanitizeThreadsUsername(username);
+  const safeShortcode = (shortcode || "").trim();
+  if (!safeUsername || !safeShortcode) return "";
+  return `https://www.threads.com/@${encodeURIComponent(safeUsername)}/post/${encodeURIComponent(safeShortcode)}`;
+}
+
 async function refreshAccessTokenIfPossible(token) {
   if (process.env.THREADS_DISABLE_AUTO_REFRESH === "true") {
     return token;
@@ -83,8 +94,37 @@ async function createTextPost(token, userId, text, replyToId) {
   }
 
   const data = parseJSON(textResp) || {};
-  const id = data.id || data.post_id || data.creation_id;
-  return { ok: !!id, id, raw: data };
+  const id = data.post_id || data.id || data.creation_id;
+  const link = data.permalink || data.link || data.url || "";
+  return { ok: !!id, id, link, raw: data };
+}
+
+async function fetchPermalinkForPost(token, postId, username) {
+  if (!postId) return "";
+
+  const qs = new URLSearchParams({
+    fields: "id,permalink,shortcode",
+    access_token: token,
+  });
+  const url = `${BASE_URL}/${postId}?${qs.toString()}`;
+
+  const resp = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  const textResp = await resp.text();
+  if (!resp.ok) {
+    console.warn(`Threads permalink lookup failed for ${postId}: ${buildThreadsRequestError(resp.status, textResp)}`);
+    return "";
+  }
+
+  const data = parseJSON(textResp) || {};
+  const permalink = (data.permalink || "").trim();
+  if (permalink) return permalink;
+
+  return buildThreadsLinkFromShortcode(username, data.shortcode || "");
 }
 
 async function postThreads(threadParts) {
@@ -94,6 +134,7 @@ async function postThreads(threadParts) {
 
   const baseToken = requireEnv("THREADS_ACCESS_TOKEN");
   const userId = requireEnv("THREADS_USER_ID");
+  const username = sanitizeThreadsUsername(process.env.THREADS_USERNAME || "");
   let token = baseToken;
 
   const parts = threadParts
@@ -106,6 +147,7 @@ async function postThreads(threadParts) {
 
   let previousId = null;
   let rootId = null;
+  let rootLink = "";
 
   try {
     try {
@@ -120,11 +162,15 @@ async function postThreads(threadParts) {
         return { ok: false, error: "Thread creation failed." };
       }
 
-      if (!rootId) rootId = res.id;
+      if (!rootId) {
+        rootId = res.id;
+        rootLink = (res.link || "").trim();
+      }
       previousId = res.id;
     }
 
-    return { ok: true, postId: rootId };
+    const link = rootLink || (await fetchPermalinkForPost(token, rootId, username));
+    return { ok: true, postId: rootId, link };
   } catch (err) {
     return { ok: false, error: String(err?.message || err) };
   }

@@ -67,11 +67,13 @@ Set these in GitHub Actions secrets or your shell.
 ### Threads
 - THREADS_USER_ID
 - THREADS_ACCESS_TOKEN
+- THREADS_USERNAME (optional, used for fallback link construction)
 - THREADS_DISABLE_AUTO_REFRESH (optional, set `true` to skip refresh attempt)
 
 Notes:
 - This app now attempts `th_refresh_token` before posting.
 - If Meta returns OAuth code `190`, your token is expired/invalid and you must replace `THREADS_ACCESS_TOKEN` in GitHub secrets.
+- On successful publish, the app now prefers the API `permalink` for log output (canonical `https://www.threads.com/@.../post/...` URL).
 
 ### X
 - X_BEARER_TOKEN
@@ -101,3 +103,4 @@ You can also run the workflow manually from the Actions tab:
 - This repo currently posts text only.
 - Threads posting uses `auto_publish_text` for simple text threads, and reply chaining via `reply_to_id`.
 - Cooldowns are tracked per platform to avoid reposting the same post within the lookback window.
+- Threads success logs include canonical post links when available; if permalink lookup is unavailable, fallback links are generated.
