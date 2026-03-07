@@ -89,7 +89,10 @@ npm ci
 node src/run.js
 ```
 
-You can also run the workflow manually from the Actions tab.
+You can also run the workflow manually from the Actions tab:
+- Open `Evergreen scheduler`.
+- Click `Run workflow`.
+- Optionally set `lookback_days` for that run (defaults to `90`).
 
 ## Notes
 - This repo currently posts text only.

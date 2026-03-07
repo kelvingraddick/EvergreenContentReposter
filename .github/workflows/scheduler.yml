@@ -6,6 +6,11 @@ on:
     # Change to "0 13,21 * * *" during EST (UTC-5).
     - cron: "0 12,20 * * *"
   workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: "LOOKBACK_DAYS override for this manual run"
+        required: false
+        default: "90"
 
 jobs:
   run:
@@ -36,7 +41,7 @@ jobs:
 
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
 
-          LOOKBACK_DAYS: "90"
+          LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '90' }}
         run: |
           mkdir -p artifacts
           set -o pipefail
