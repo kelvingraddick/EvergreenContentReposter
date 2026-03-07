@@ -37,4 +37,15 @@ jobs:
           TIMEZONE: America/New_York
           RUN_HOURS: "8,16"
           LOOKBACK_DAYS: "90"
-        run: node src/run.js
+        run: |
+          mkdir -p artifacts
+          set -o pipefail
+          node src/run.js 2>&1 | tee artifacts/run.log
+
+      - name: Upload run logs artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-console-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/run.log
+          if-no-files-found: warn
