@@ -67,8 +67,11 @@ Set these in GitHub Actions secrets or your shell.
 ### Threads
 - THREADS_USER_ID
 - THREADS_ACCESS_TOKEN
+- THREADS_DISABLE_AUTO_REFRESH (optional, set `true` to skip refresh attempt)
 
-Note: Threads tokens expire. Refreshing requires app credentials and the threads token exchange and refresh endpoints.
+Notes:
+- This app now attempts `th_refresh_token` before posting.
+- If Meta returns OAuth code `190`, your token is expired/invalid and you must replace `THREADS_ACCESS_TOKEN` in GitHub secrets.
 
 ### X
 - X_BEARER_TOKEN
