@@ -4,7 +4,7 @@ Automation for posting evergreen content from AirTable to Threads and X using Gi
 
 ## How it works
 - GitHub Actions runs on a schedule (see `.github/workflows/scheduler.yml`).
-- The job posts during configured run hours (defaults to 08 and 16 in America/New_York).
+- The workflow cron is set in UTC for two runs per day.
 - Each run creates a record in `Jobs` and two records in `Published` (Threads and X).
 - A post is eligible only if:
   - `Status` is `Active`
@@ -76,10 +76,12 @@ Note: Threads tokens expire. Refreshing requires app credentials and the threads
 The X implementation in this repo is a placeholder. Add OAuth 2 user context auth and post creation logic in `src/platforms/x.js`.
 
 ### Scheduling
-- TIMEZONE (defaults to America/New_York)
-- RUN_HOURS (defaults to 8,16)
-- RUN_MINUTES (optional; comma-separated minute list like `0` or `0,30`)
 - LOOKBACK_DAYS (defaults to 90)
+
+Workflow schedule is configured in `.github/workflows/scheduler.yml` using UTC cron:
+- Use `0 12,20 * * *` for 08:00 and 16:00 America/New_York during EDT (UTC-4).
+- Use `0 13,21 * * *` for 08:00 and 16:00 America/New_York during EST (UTC-5).
+- Update this at DST boundaries (for 2026: switch to EDT hours on March 8, 2026; switch to EST hours on November 1, 2026).
 
 ## Run locally
 ```bash

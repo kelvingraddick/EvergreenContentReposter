@@ -2,7 +2,7 @@ const Airtable=require('airtable');
 const{DateTime}=require('luxon');
 
 function isoNow(){return DateTime.now().toUTC().toISO();}
-function runKeyNY(nowNY){return `${nowNY.toFormat('yyyy-LL-dd_HH')}:00`;}
+function runKeyUTC(nowUTC){return `${nowUTC.toFormat('yyyy-LL-dd_HH')}:00`;}
 
 class AirtableClient{
  constructor(){
@@ -53,4 +53,4 @@ class AirtableClient{
  }
 }
 
-module.exports={AirtableClient,isoNow,runKeyNY};
+module.exports={AirtableClient,isoNow,runKeyUTC};

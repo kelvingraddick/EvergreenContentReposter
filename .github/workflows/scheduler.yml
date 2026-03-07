@@ -2,7 +2,9 @@ name: Evergreen scheduler
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    # 08:00 and 16:00 America/New_York during EDT (UTC-4).
+    # Change to "0 13,21 * * *" during EST (UTC-5).
+    - cron: "0 12,20 * * *"
   workflow_dispatch:
 
 jobs:
@@ -34,8 +36,6 @@ jobs:
 
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
 
-          TIMEZONE: America/New_York
-          RUN_HOURS: "8,16"
           LOOKBACK_DAYS: "90"
         run: |
           mkdir -p artifacts

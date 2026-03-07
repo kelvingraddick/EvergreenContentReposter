@@ -1,5 +1,5 @@
 const { DateTime } = require("luxon");
-const { AirtableClient, isoNow, runKeyNY } = require("./airtable");
+const { AirtableClient, isoNow, runKeyUTC } = require("./airtable");
 const { weightedPick } = require("./picker");
 const { postX } = require("./platforms/x");
 const { postThreads } = require("./platforms/threads");
@@ -47,44 +47,12 @@ function buildXPartsFromPostText(parts) {
 }
 
 async function main() {
-  const timezone = process.env.TIMEZONE || "America/New_York";
-  const runMinutesRaw = process.env.RUN_MINUTES || "";
-  const runHours = (process.env.RUN_HOURS || "8,16")
-    .split(",")
-    .map(Number)
-    .filter(n => !Number.isNaN(n));
-  const runMinutes = runMinutesRaw
-    .split(",")
-    .map(s => s.trim())
-    .filter(Boolean)
-    .map(Number)
-    .filter(n => !Number.isNaN(n) && n >= 0 && n <= 59);
-
-  if (runHours.length === 0) {
-    throw new Error("RUN_HOURS is empty or invalid.");
-  }
-  if (runMinutesRaw.trim().length > 0 && runMinutes.length === 0) {
-    throw new Error("RUN_MINUTES is set but invalid.");
-  }
-
-  const nowNY = DateTime.now().setZone(timezone);
+  const nowUTC = DateTime.now().toUTC();
   const nowUTCISO = isoNow();
-
-  if (!runHours.includes(nowNY.hour)) {
-    console.log(`Not in RUN_HOURS (NY): ${nowNY.toISO()}`);
-    return;
-  }
-
-  if (runMinutes.length > 0 && !runMinutes.includes(nowNY.minute)) {
-    console.log(`Not in RUN_MINUTES (NY): ${nowNY.toISO()}`);
-    return;
-  }
-
-  const runKey = runKeyNY(nowNY);
+  const runKey = runKeyUTC(nowUTC);
 
   const lookbackDays = Number(process.env.LOOKBACK_DAYS || "90");
-  const cutoffNY = nowNY.minus({ days: lookbackDays });
-  const cutoffISO = cutoffNY.toUTC().toISO();
+  const cutoffISO = nowUTC.minus({ days: lookbackDays }).toISO();
 
   const airtable = new AirtableClient();
 
