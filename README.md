@@ -76,9 +76,14 @@ Notes:
 - On successful publish, the app now prefers the API `permalink` for log output (canonical `https://www.threads.com/@.../post/...` URL).
 
 ### X
-- X_BEARER_TOKEN
+- X_CONSUMER_KEY
+- X_CONSUMER_SECRET
+- X_ACCESS_TOKEN
+- X_ACCESS_TOKEN_SECRET
 
-The X implementation in this repo is a placeholder. Add OAuth 2 user context auth and post creation logic in `src/platforms/x.js`.
+Notes:
+- X posting uses OAuth 1.0a user context only.
+- Ensure your X app has read/write permissions for the posting account.
 
 ### Scheduling
 - LOOKBACK_DAYS (defaults to 90)

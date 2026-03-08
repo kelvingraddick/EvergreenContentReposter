@@ -40,7 +40,10 @@ jobs:
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
           THREADS_DISABLE_AUTO_REFRESH: ${{ secrets.THREADS_DISABLE_AUTO_REFRESH }}
 
-          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          X_CONSUMER_KEY: ${{ secrets.X_CONSUMER_KEY }}
+          X_CONSUMER_SECRET: ${{ secrets.X_CONSUMER_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
 
           LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '90' }}
         run: |
