@@ -15,6 +15,7 @@ Automation for posting evergreen content from AirTable to Threads and X using Gi
 
 ## AirTable schema
 This repo expects three tables in your base.
+Table names are hard-coded and must be exactly: `Posts`, `Jobs`, and `Published`.
 
 ### Posts
 - Id (Autonumber)
@@ -60,9 +61,6 @@ Set these in GitHub Actions secrets or your shell.
 ### AirTable
 - AIRTABLE_TOKEN
 - AIRTABLE_BASE_ID
-- AIRTABLE_POSTS_TABLE (defaults to Posts)
-- AIRTABLE_JOBS_TABLE (defaults to Jobs)
-- AIRTABLE_PUBLISHED_TABLE (defaults to Published)
 
 ### Threads
 - THREADS_USER_ID
@@ -142,8 +140,10 @@ Runtime config for non-token values:
 - The dashboard now reads base/repo/workflow settings from runtime config (not the sign-in form).
 - Provide config via `window.ECR_DASHBOARD_CONFIG` (or `window.__ECR_DASHBOARD_CONFIG__`) in `docs/index.html`, or URL params.
 - Required: `airtableBaseId`, `githubOwner`, `githubRepo`.
-- Optional: `postsTable`, `jobsTable`, `publishedTable`, `threadsUsername`, `workflow`, `ref`, `lookbackDays`, `timezone`, `operatorEmail`.
+- Optional: `threadsUsername`, `workflow`, `ref`, `lookbackDays`, `timezone`, `operatorEmail`.
 - On standard GitHub Pages URLs (`<owner>.github.io`), owner/repo are auto-detected.
+- If required runtime values are missing, the sign-in screen exposes one-time override inputs so you can continue without editing `index.html`.
+- Table names are fixed in code and cannot be configured in runtime config or the sign-in form: `Posts`, `Jobs`, `Published`.
 
 Important:
 - GitHub Pages is static hosting; credentials are used client-side in your browser session.

@@ -4,6 +4,7 @@ const{DateTime}=require('luxon');
 function isoNow(){return DateTime.now().toUTC().toISO();}
 function runKeyUTC(nowUTC){return `${nowUTC.toFormat('yyyy-LL-dd_HH')}:00`;}
 function escapeFormulaString(value){return String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"');}
+const TABLES=Object.freeze({posts:'Posts',jobs:'Jobs',published:'Published'});
 
 class AirtableClient{
  constructor(){
@@ -11,13 +12,10 @@ class AirtableClient{
   const baseId=process.env.AIRTABLE_BASE_ID;
   if(!apiKey||!baseId) throw new Error('Missing Airtable credentials');
   this.base=new Airtable({apiKey}).base(baseId);
-  this.postsTable=process.env.AIRTABLE_POSTS_TABLE||'Posts';
-  this.jobsTable=process.env.AIRTABLE_JOBS_TABLE||'Jobs';
-  this.publishedTable=process.env.AIRTABLE_PUBLISHED_TABLE||'Published';
  }
  async findJobByRunKey(runKey){
   const filterByFormula=`{RunKey} = "${runKey}"`;
-  const records=await this.base(this.jobsTable).select({filterByFormula,maxRecords:1}).firstPage();
+  const records=await this.base(TABLES.jobs).select({filterByFormula,maxRecords:1}).firstPage();
   return records[0]||null;
  }
  async listEligiblePosts(cutoffISO,opts={}){
@@ -37,7 +35,7 @@ class AirtableClient{
   const filterByFormula=`AND(
     ${clauses.join(",\n    ")}
   )`;
-  return await this.base(this.postsTable).select({filterByFormula}).all();
+  return await this.base(TABLES.posts).select({filterByFormula}).all();
  }
  async findPostByIdentifier(identifier){
   const raw=String(identifier||'').trim();
@@ -49,16 +47,16 @@ class AirtableClient{
    filterByFormula=`OR(${filterByFormula}, {Id} = ${Number(raw)})`;
   }
 
-  const records=await this.base(this.postsTable).select({filterByFormula,maxRecords:1}).firstPage();
+  const records=await this.base(TABLES.posts).select({filterByFormula,maxRecords:1}).firstPage();
   return records[0]||null;
  }
  async createJob(runKey,postRecordId,nowUTCISO){
   const fields={RunKey:runKey,StartTime:nowUTCISO};
   if(postRecordId) fields.Post=[postRecordId];
-  return await this.base(this.jobsTable).create(fields);
+  return await this.base(TABLES.jobs).create(fields);
  }
  async updateJob(jobRecordId,fields){
-  return await this.base(this.jobsTable).update(jobRecordId,fields);
+  return await this.base(TABLES.jobs).update(jobRecordId,fields);
  }
  async createPublished(jobRecordId,platform,isSuccess,message,platformPostId){
   const fields={
@@ -68,10 +66,10 @@ class AirtableClient{
     ErrorMessage:message||'',
     PlatformPostId:platformPostId||''
   };
-  return await this.base(this.publishedTable).create(fields);
+  return await this.base(TABLES.published).create(fields);
  }
  async updatePostCooldown(postRecordId,fields){
-  return await this.base(this.postsTable).update(postRecordId,fields);
+  return await this.base(TABLES.posts).update(postRecordId,fields);
  }
 }
 

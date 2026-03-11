@@ -3,6 +3,12 @@ const STORAGE_KEYS = {
   PROFILE: "ecr_dashboard_profile_v1",
 };
 
+const AIRTABLE_TABLES = Object.freeze({
+  posts: "Posts",
+  jobs: "Jobs",
+  published: "Published",
+});
+
 const DEFAULTS = resolveDefaults();
 const RUNS_POLL_INTERVAL_MS = 20_000;
 const RUNS_POLL_MAX_DURATION_MS = 15 * 60 * 1000;
@@ -254,6 +260,7 @@ function renderLogin() {
 }
 
 function renderSignInForm(profile) {
+  const requiresConfigOverrides = !DEFAULTS.airtableBaseId || !DEFAULTS.githubOwner || !DEFAULTS.githubRepo;
   return `
     <h2>Sign in</h2>
     <p class="help">Enter API credentials for Airtable + GitHub Actions.</p>
@@ -275,6 +282,51 @@ function renderSignInForm(profile) {
         <div class="help mono">Repo: ${escapeHtml([DEFAULTS.githubOwner, DEFAULTS.githubRepo].filter(Boolean).join("/") || "Not configured")}</div>
         <div class="help mono">Workflow: ${escapeHtml(DEFAULTS.workflow)} @ ${escapeHtml(DEFAULTS.ref)}</div>
       </div>
+      ${
+        requiresConfigOverrides
+          ? `
+      <div class="panel-item">
+        <div class="muted">Required config overrides</div>
+        <p class="help">Runtime config is incomplete. Add missing values here to continue.</p>
+        <div class="field">
+          <label for="airtableBaseId">Airtable base ID</label>
+          <input
+            id="airtableBaseId"
+            class="input mono"
+            name="airtableBaseId"
+            type="text"
+            value="${escapeHtml(profile.airtableBaseId || DEFAULTS.airtableBaseId || "")}"
+            placeholder="appXXXXXXXXXXXXXX"
+            ${DEFAULTS.airtableBaseId ? "" : "required"}
+          />
+        </div>
+        <div class="field">
+          <label for="githubOwner">GitHub owner</label>
+          <input
+            id="githubOwner"
+            class="input mono"
+            name="githubOwner"
+            type="text"
+            value="${escapeHtml(profile.githubOwner || DEFAULTS.githubOwner || "")}"
+            placeholder="org-or-user"
+            ${DEFAULTS.githubOwner ? "" : "required"}
+          />
+        </div>
+        <div class="field">
+          <label for="githubRepo">GitHub repo</label>
+          <input
+            id="githubRepo"
+            class="input mono"
+            name="githubRepo"
+            type="text"
+            value="${escapeHtml(profile.githubRepo || DEFAULTS.githubRepo || "")}"
+            placeholder="repo-name"
+            ${DEFAULTS.githubRepo ? "" : "required"}
+          />
+        </div>
+      </div>`
+          : ""
+      }
 
       <div class="btn-row">
         <button type="submit" class="btn btn-primary">Sign in</button>
@@ -772,9 +824,9 @@ function renderSettingsView() {
       <h4>Runtime Configuration (read-only)</h4>
       <div class="kv">
         <div><div class="muted">Airtable base ID</div><div class="mono">${escapeHtml(s.airtable.baseId || "-")}</div></div>
-        <div><div class="muted">Posts table</div><div>${escapeHtml(s.airtable.postsTable || "-")}</div></div>
-        <div><div class="muted">Jobs table</div><div>${escapeHtml(s.airtable.jobsTable || "-")}</div></div>
-        <div><div class="muted">Published table</div><div>${escapeHtml(s.airtable.publishedTable || "-")}</div></div>
+        <div><div class="muted">Posts table</div><div>${escapeHtml(AIRTABLE_TABLES.posts)}</div></div>
+        <div><div class="muted">Jobs table</div><div>${escapeHtml(AIRTABLE_TABLES.jobs)}</div></div>
+        <div><div class="muted">Published table</div><div>${escapeHtml(AIRTABLE_TABLES.published)}</div></div>
         <div><div class="muted">GitHub repo</div><div class="mono">${escapeHtml([s.github.owner, s.github.repo].filter(Boolean).join("/") || "-")}</div></div>
         <div><div class="muted">Workflow</div><div class="mono">${escapeHtml(`${s.github.workflow || "-"} @ ${s.github.ref || "-"}`)}</div></div>
       </div>
@@ -1019,6 +1071,9 @@ async function submitLogin(form) {
   const fd = new FormData(form);
   const airtableToken = String(fd.get("airtableToken") || "").trim();
   const githubToken = String(fd.get("githubToken") || "").trim();
+  const airtableBaseId = String(fd.get("airtableBaseId") || "").trim();
+  const githubOwner = String(fd.get("githubOwner") || "").trim();
+  const githubRepo = String(fd.get("githubRepo") || "").trim();
   const operatorEmail = String(DEFAULTS.operatorEmail || "operator").trim();
 
   if (!airtableToken || !githubToken) {
@@ -1035,16 +1090,13 @@ async function submitLogin(form) {
     },
     airtable: {
       token: airtableToken,
-      baseId: DEFAULTS.airtableBaseId,
-      postsTable: DEFAULTS.postsTable,
-      jobsTable: DEFAULTS.jobsTable,
-      publishedTable: DEFAULTS.publishedTable,
+      baseId: readFirstNonEmpty(airtableBaseId, DEFAULTS.airtableBaseId),
       threadsUsername: DEFAULTS.threadsUsername,
     },
     github: {
       token: githubToken,
-      owner: DEFAULTS.githubOwner,
-      repo: DEFAULTS.githubRepo,
+      owner: readFirstNonEmpty(githubOwner, DEFAULTS.githubOwner),
+      repo: readFirstNonEmpty(githubRepo, DEFAULTS.githubRepo),
       workflow: DEFAULTS.workflow,
       ref: DEFAULTS.ref,
     },
@@ -1059,7 +1111,11 @@ async function submitLogin(form) {
   if (!payload.github.owner) missingRuntimeConfig.push("GitHub owner");
   if (!payload.github.repo) missingRuntimeConfig.push("GitHub repo");
   if (missingRuntimeConfig.length > 0) {
-    pushToast(`Missing runtime config: ${missingRuntimeConfig.join(", ")}. Set ECR_DASHBOARD_CONFIG or URL params.`, "error", 10_000);
+    pushToast(
+      `Missing required config: ${missingRuntimeConfig.join(", ")}. Enter values in sign-in or set ECR_DASHBOARD_CONFIG / URL params.`,
+      "warning",
+      10_000
+    );
     return;
   }
 
@@ -1068,12 +1124,11 @@ async function submitLogin(form) {
     rememberSecrets,
     airtableToken: rememberSecrets ? payload.airtable.token : "",
     githubToken: rememberSecrets ? payload.github.token : "",
+    airtableBaseId: payload.airtable.baseId || "",
+    githubOwner: payload.github.owner || "",
+    githubRepo: payload.github.repo || "",
   };
-  if (rememberSecrets) {
-    saveProfile(profileToSave);
-  } else {
-    localStorage.removeItem(STORAGE_KEYS.PROFILE);
-  }
+  saveProfile(profileToSave);
 
   state.session = {
     identity: payload.identity,
@@ -1143,10 +1198,10 @@ async function submitPostForm(form) {
     };
 
     if (mode === "edit") {
-      await airtableUpdateRecord(state.session.airtable, state.session.airtable.postsTable, recordId, fields);
+      await airtableUpdateRecord(state.session.airtable, AIRTABLE_TABLES.posts, recordId, fields);
       pushToast("Post updated.", "success");
     } else {
-      await airtableCreateRecord(state.session.airtable, state.session.airtable.postsTable, fields);
+      await airtableCreateRecord(state.session.airtable, AIRTABLE_TABLES.posts, fields);
       pushToast("Post created.", "success");
     }
     await refreshData({ silent: true });
@@ -1161,7 +1216,7 @@ async function submitPostForm(form) {
 
 async function deletePost(recordId) {
   try {
-    await airtableDeleteRecord(state.session.airtable, state.session.airtable.postsTable, recordId);
+    await airtableDeleteRecord(state.session.airtable, AIRTABLE_TABLES.posts, recordId);
     state.modal = null;
     pushToast("Post deleted.", "success");
     await refreshData({ silent: true });
@@ -1214,9 +1269,9 @@ async function refreshData({ silent = true } = {}) {
   try {
     const airtable = state.session.airtable;
     const [postRecords, jobRecords, publishedRecords] = await Promise.all([
-      airtableListRecords(airtable, airtable.postsTable, { sortField: "Id", direction: "desc" }),
-      airtableListRecords(airtable, airtable.jobsTable, { sortField: "StartTime", direction: "desc", maxRecords: 200 }),
-      airtableListRecords(airtable, airtable.publishedTable, { maxRecords: 500 }),
+      airtableListRecords(airtable, AIRTABLE_TABLES.posts, { sortField: "Id", direction: "desc" }),
+      airtableListRecords(airtable, AIRTABLE_TABLES.jobs, { sortField: "StartTime", direction: "desc", maxRecords: 200 }),
+      airtableListRecords(airtable, AIRTABLE_TABLES.published, { maxRecords: 500 }),
     ]);
 
     state.data.posts = postRecords.map(mapPostRecord).sort((a, b) => (b.id || 0) - (a.id || 0));
@@ -1585,9 +1640,6 @@ function resolveDefaults() {
   const timezoneFallback = Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
 
   return {
-    postsTable: readFirstNonEmpty(runtime.postsTable, "Posts"),
-    jobsTable: readFirstNonEmpty(runtime.jobsTable, "Jobs"),
-    publishedTable: readFirstNonEmpty(runtime.publishedTable, "Published"),
     workflow: readFirstNonEmpty(runtime.workflow, "scheduler.yml"),
     ref: readFirstNonEmpty(runtime.ref, "main"),
     lookbackDays: toPositiveInt(runtime.lookbackDays, 90),
@@ -1607,9 +1659,6 @@ function readRuntimeConfig() {
 
   return {
     airtableBaseId: readFirstNonEmpty(params.get("airtable_base_id"), params.get("airtableBaseId"), globalConfig.airtableBaseId),
-    postsTable: readFirstNonEmpty(params.get("posts_table"), params.get("postsTable"), globalConfig.postsTable),
-    jobsTable: readFirstNonEmpty(params.get("jobs_table"), params.get("jobsTable"), globalConfig.jobsTable),
-    publishedTable: readFirstNonEmpty(params.get("published_table"), params.get("publishedTable"), globalConfig.publishedTable),
     threadsUsername: readFirstNonEmpty(params.get("threads_username"), params.get("threadsUsername"), globalConfig.threadsUsername),
     githubOwner: readFirstNonEmpty(params.get("github_owner"), params.get("githubOwner"), globalConfig.githubOwner),
     githubRepo: readFirstNonEmpty(params.get("github_repo"), params.get("githubRepo"), globalConfig.githubRepo),
