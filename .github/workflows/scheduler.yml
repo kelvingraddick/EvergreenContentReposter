@@ -11,6 +11,10 @@ on:
         description: "LOOKBACK_DAYS override for this manual run"
         required: false
         default: "90"
+      post_id:
+        description: "Optional direct post override (Airtable record ID or numeric {Id})"
+        required: false
+        default: ""
 
 jobs:
   run:
@@ -46,6 +50,7 @@ jobs:
           X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
 
           LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '90' }}
+          DIRECT_POST_ID: ${{ github.event.inputs.post_id || '' }}
         run: |
           mkdir -p artifacts
           set -o pipefail

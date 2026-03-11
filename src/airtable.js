@@ -3,6 +3,7 @@ const{DateTime}=require('luxon');
 
 function isoNow(){return DateTime.now().toUTC().toISO();}
 function runKeyUTC(nowUTC){return `${nowUTC.toFormat('yyyy-LL-dd_HH')}:00`;}
+function escapeFormulaString(value){return String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"');}
 
 class AirtableClient{
  constructor(){
@@ -28,6 +29,19 @@ class AirtableClient{
     OR({LastPostedOnThreadsTime} = "", {LastPostedOnThreadsTime} <= DATETIME_PARSE("${cutoffISO}"))
   )`;
   return await this.base(this.postsTable).select({filterByFormula}).all();
+ }
+ async findPostByIdentifier(identifier){
+  const raw=String(identifier||'').trim();
+  if(!raw) return null;
+
+  const escaped=escapeFormulaString(raw);
+  let filterByFormula=`RECORD_ID() = "${escaped}"`;
+  if(/^\d+$/.test(raw)){
+   filterByFormula=`OR(${filterByFormula}, {Id} = ${Number(raw)})`;
+  }
+
+  const records=await this.base(this.postsTable).select({filterByFormula,maxRecords:1}).firstPage();
+  return records[0]||null;
  }
  async createJob(runKey,postRecordId,nowUTCISO){
   const fields={RunKey:runKey,StartTime:nowUTCISO};

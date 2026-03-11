@@ -103,6 +103,21 @@ You can also run the workflow manually from the Actions tab:
 - Open `Evergreen scheduler`.
 - Click `Run workflow`.
 - Optionally set `lookback_days` for that run (defaults to `90`).
+- Optionally set `post_id` to directly publish a specific post by Airtable record ID (`rec...`) or numeric `{Id}`.
+
+### Direct post override
+Use `DIRECT_POST_ID` (or CLI `--post-id`) to bypass weighted selection and post one specific record.
+
+Examples:
+```bash
+DIRECT_POST_ID=rec1234567890abc node src/run.js
+node src/run.js --post-id 42
+```
+
+Notes:
+- `DIRECT_POST_ID` accepts an Airtable record ID (`rec...`) or numeric `Id` field from `Posts`.
+- When set, cooldown eligibility filters are skipped for selection; the chosen post is posted immediately.
+- Successful publishes still update `LastPostedOnThreadsTime` and `LastPostedOnXTime`.
 
 ## Notes
 - This repo currently posts text only.

@@ -4,6 +4,33 @@ const { weightedPick } = require("./picker");
 const { postX } = require("./platforms/x");
 const { postThreads } = require("./platforms/threads");
 
+function parseDirectPostIdFromArgs(argv = process.argv.slice(2)) {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = (argv[i] || "").trim();
+    if (!arg) continue;
+
+    if (arg === "--post-id" || arg === "--postId") {
+      return (argv[i + 1] || "").trim();
+    }
+    if (arg.startsWith("--post-id=")) {
+      return arg.slice("--post-id=".length).trim();
+    }
+    if (arg.startsWith("--postId=")) {
+      return arg.slice("--postId=".length).trim();
+    }
+  }
+  return "";
+}
+
+function buildRunKey(nowUTC, directPostId) {
+  const base = runKeyUTC(nowUTC);
+  const trimmedId = String(directPostId || "").trim();
+  if (!trimmedId) return base;
+
+  const safeId = trimmedId.replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 40) || "unknown";
+  return `${base}:direct:${safeId}:${nowUTC.toMillis()}`;
+}
+
 function splitPartsFromText(text) {
   return (text || "")
     .split(/---PART---/gi)
@@ -80,7 +107,8 @@ function logPostParts(platform, parts) {
 async function main() {
   const nowUTC = DateTime.now().toUTC();
   const nowUTCISO = isoNow();
-  const runKey = runKeyUTC(nowUTC);
+  const directPostId = (parseDirectPostIdFromArgs() || process.env.DIRECT_POST_ID || "").trim();
+  const runKey = buildRunKey(nowUTC, directPostId);
 
   const lookbackDays = Number(process.env.LOOKBACK_DAYS || "90");
   const cutoffISO = nowUTC.minus({ days: lookbackDays }).toISO();
@@ -93,27 +121,38 @@ async function main() {
     return;
   }
 
-  const candidates = await airtable.listEligiblePosts(cutoffISO);
+  let chosen = null;
+  if (directPostId) {
+    chosen = await airtable.findPostByIdentifier(directPostId);
+    if (!chosen) {
+      throw new Error(
+        `DIRECT_POST_ID "${directPostId}" was not found. Use Airtable record ID (rec...) or numeric {Id}.`
+      );
+    }
+    console.log(`Direct override enabled. Identifier "${directPostId}" mapped to post record ${chosen.id}.`);
+  } else {
+    const candidates = await airtable.listEligiblePosts(cutoffISO);
 
-  if (!candidates || candidates.length === 0) {
-    const skipJob = await airtable.createJob(runKey, undefined, nowUTCISO);
-    await airtable.updateJob(skipJob.id, {
-      EndTime: isoNow(),
-      Result: "Skipped"
-    });
-    console.log(`No eligible posts at ${runKey}, skipped.`);
-    return;
-  }
+    if (!candidates || candidates.length === 0) {
+      const skipJob = await airtable.createJob(runKey, undefined, nowUTCISO);
+      await airtable.updateJob(skipJob.id, {
+        EndTime: isoNow(),
+        Result: "Skipped"
+      });
+      console.log(`No eligible posts at ${runKey}, skipped.`);
+      return;
+    }
 
-  const chosen = weightedPick(candidates, "Weight");
-  if (!chosen) {
-    const skipJob = await airtable.createJob(runKey, undefined, nowUTCISO);
-    await airtable.updateJob(skipJob.id, {
-      EndTime: isoNow(),
-      Result: "Skipped"
-    });
-    console.log(`Weighted pick failed, skipped.`);
-    return;
+    chosen = weightedPick(candidates, "Weight");
+    if (!chosen) {
+      const skipJob = await airtable.createJob(runKey, undefined, nowUTCISO);
+      await airtable.updateJob(skipJob.id, {
+        EndTime: isoNow(),
+        Result: "Skipped"
+      });
+      console.log(`Weighted pick failed, skipped.`);
+      return;
+    }
   }
 
   const postRecordId = chosen.id;
