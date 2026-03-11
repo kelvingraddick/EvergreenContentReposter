@@ -128,7 +128,7 @@ Notes:
 This repo includes a static admin dashboard in `docs/` that can be hosted on GitHub Pages.
 
 Features:
-- Login/session gate with optional TOTP verification step.
+- Login/session gate using Airtable + GitHub tokens only.
 - Post management (view/add/edit/delete) via Airtable API.
 - Manual publish dispatch to GitHub Actions (`X`, `Threads`, or both).
 - Run + publish attempt visibility from `Jobs` and `Published`.
@@ -137,6 +137,13 @@ Deploy:
 1. In GitHub repo settings, enable Pages and select `Deploy from a branch`.
 2. Use your default branch and the `/docs` folder.
 3. Open the published Pages URL and sign in with your Airtable/GitHub credentials.
+
+Runtime config for non-token values:
+- The dashboard now reads base/repo/workflow settings from runtime config (not the sign-in form).
+- Provide config via `window.ECR_DASHBOARD_CONFIG` (or `window.__ECR_DASHBOARD_CONFIG__`) in `docs/index.html`, or URL params.
+- Required: `airtableBaseId`, `githubOwner`, `githubRepo`.
+- Optional: `postsTable`, `jobsTable`, `publishedTable`, `threadsUsername`, `workflow`, `ref`, `lookbackDays`, `timezone`, `operatorEmail`.
+- On standard GitHub Pages URLs (`<owner>.github.io`), owner/repo are auto-detected.
 
 Important:
 - GitHub Pages is static hosting; credentials are used client-side in your browser session.

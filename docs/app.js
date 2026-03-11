@@ -3,15 +3,7 @@ const STORAGE_KEYS = {
   PROFILE: "ecr_dashboard_profile_v1",
 };
 
-const DEFAULTS = {
-  postsTable: "Posts",
-  jobsTable: "Jobs",
-  publishedTable: "Published",
-  workflow: "scheduler.yml",
-  ref: "main",
-  lookbackDays: 90,
-  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
-};
+const DEFAULTS = resolveDefaults();
 const RUNS_POLL_INTERVAL_MS = 20_000;
 const RUNS_POLL_MAX_DURATION_MS = 15 * 60 * 1000;
 
@@ -19,7 +11,6 @@ const appEl = document.getElementById("app");
 
 const state = {
   session: loadSession(),
-  pendingAuth: null,
   search: "",
   route: parseRoute(location.hash),
   loading: false,
@@ -81,7 +72,7 @@ function parseRoute(hash) {
   const parts = path.split("/").filter(Boolean);
   if (parts.length === 0) return { page: "dashboard" };
 
-  if (parts[0] === "login") return { page: "login", step: parts[1] || "base" };
+  if (parts[0] === "login") return { page: "login" };
   if (parts[0] === "dashboard") return { page: "dashboard" };
   if (parts[0] === "posts" && parts[1] === "new") return { page: "postEditor", mode: "new" };
   if (parts[0] === "posts" && parts[2] === "edit") {
@@ -125,7 +116,6 @@ function clearSession() {
   stopRunsPolling();
   sessionStorage.removeItem(STORAGE_KEYS.SESSION);
   state.session = null;
-  state.pendingAuth = null;
   state.data = { posts: [], jobs: [], published: [], loadedAt: null };
 }
 
@@ -241,13 +231,6 @@ function render() {
 
 function renderLogin() {
   const profile = getSavedProfile();
-  const isVerify = state.route.step === "verify";
-  const pending = state.pendingAuth;
-
-  if (isVerify && !pending) {
-    navigate("/login");
-    return;
-  }
 
   appEl.innerHTML = `
     <div class="login-wrap">
@@ -263,11 +246,7 @@ function renderLogin() {
           </p>
         </section>
         <section class="login-form">
-          ${
-            isVerify
-              ? renderVerifyForm()
-              : renderSignInForm(profile)
-          }
+          ${renderSignInForm(profile)}
         </section>
       </div>
     </div>
@@ -277,115 +256,28 @@ function renderLogin() {
 function renderSignInForm(profile) {
   return `
     <h2>Sign in</h2>
-    <p class="help">Enter operator identity and API credentials for Airtable + GitHub Actions.</p>
+    <p class="help">Enter API credentials for Airtable + GitHub Actions.</p>
     <form id="login-form" autocomplete="off">
-      <div class="field">
-        <label for="email">Email</label>
-        <input id="email" class="input" name="email" type="email" required value="${escapeHtml(profile.email || "")}" />
-      </div>
-      <div class="field">
-        <label for="password">Password</label>
-        <input id="password" class="input" name="password" type="password" required value="" />
-      </div>
-      <div class="field">
-        <label for="totpSecret">2FA shared secret (optional TOTP base32)</label>
-        <input id="totpSecret" class="input mono" name="totpSecret" type="text" value="${escapeHtml(profile.totpSecret || "")}" />
-      </div>
-
-      <div class="hr"></div>
-
-      <h3>Connectors</h3>
       <div class="field">
         <label for="airtableToken">Airtable token</label>
         <input id="airtableToken" class="input mono" name="airtableToken" type="password" required value="${escapeHtml(profile.airtableToken || "")}" />
       </div>
       <div class="field">
-        <label for="airtableBaseId">Airtable base ID</label>
-        <input id="airtableBaseId" class="input mono" name="airtableBaseId" type="text" required value="${escapeHtml(profile.airtableBaseId || "")}" />
-      </div>
-      <div class="split">
-        <div class="field">
-          <label for="postsTable">Posts table</label>
-          <input id="postsTable" class="input" name="postsTable" type="text" value="${escapeHtml(profile.postsTable || DEFAULTS.postsTable)}" />
-        </div>
-        <div class="field">
-          <label for="jobsTable">Jobs table</label>
-          <input id="jobsTable" class="input" name="jobsTable" type="text" value="${escapeHtml(profile.jobsTable || DEFAULTS.jobsTable)}" />
-        </div>
-      </div>
-      <div class="field">
-        <label for="publishedTable">Published table</label>
-        <input id="publishedTable" class="input" name="publishedTable" type="text" value="${escapeHtml(profile.publishedTable || DEFAULTS.publishedTable)}" />
-      </div>
-      <div class="field">
-        <label for="threadsUsername">Threads username (optional, for links)</label>
-        <input id="threadsUsername" class="input" name="threadsUsername" type="text" value="${escapeHtml(profile.threadsUsername || "")}" />
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="field">
         <label for="githubToken">GitHub token (workflow dispatch)</label>
         <input id="githubToken" class="input mono" name="githubToken" type="password" required value="${escapeHtml(profile.githubToken || "")}" />
-      </div>
-      <div class="split">
-        <div class="field">
-          <label for="githubOwner">Repo owner</label>
-          <input id="githubOwner" class="input" name="githubOwner" type="text" required value="${escapeHtml(profile.githubOwner || "")}" />
-        </div>
-        <div class="field">
-          <label for="githubRepo">Repo name</label>
-          <input id="githubRepo" class="input" name="githubRepo" type="text" required value="${escapeHtml(profile.githubRepo || "")}" />
-        </div>
-      </div>
-      <div class="split">
-        <div class="field">
-          <label for="workflow">Workflow file or ID</label>
-          <input id="workflow" class="input" name="workflow" type="text" value="${escapeHtml(profile.workflow || DEFAULTS.workflow)}" />
-        </div>
-        <div class="field">
-          <label for="workflowRef">Workflow ref (branch/tag)</label>
-          <input id="workflowRef" class="input" name="workflowRef" type="text" value="${escapeHtml(profile.workflowRef || DEFAULTS.ref)}" />
-        </div>
-      </div>
-      <div class="split">
-        <div class="field">
-          <label for="lookbackDays">Default lookback days</label>
-          <input id="lookbackDays" class="input" name="lookbackDays" type="number" min="1" value="${escapeHtml(String(profile.lookbackDays || DEFAULTS.lookbackDays))}" />
-        </div>
-        <div class="field">
-          <label for="timezone">Timezone</label>
-          <input id="timezone" class="input" name="timezone" type="text" value="${escapeHtml(profile.timezone || DEFAULTS.timezone)}" />
-        </div>
-      </div>
-
-      <div class="field">
-        <label><input type="checkbox" name="rememberProfile" ${profile.rememberProfile ? "checked" : ""} /> Remember profile on this browser</label>
       </div>
       <div class="field">
         <label><input type="checkbox" name="rememberSecrets" ${profile.rememberSecrets ? "checked" : ""} /> Remember API secrets on this browser (not recommended)</label>
       </div>
+      <div class="panel-item">
+        <div class="muted">Runtime configuration (read-only)</div>
+        <div class="help mono">Airtable base: ${escapeHtml(DEFAULTS.airtableBaseId || "Not configured")}</div>
+        <div class="help mono">Repo: ${escapeHtml([DEFAULTS.githubOwner, DEFAULTS.githubRepo].filter(Boolean).join("/") || "Not configured")}</div>
+        <div class="help mono">Workflow: ${escapeHtml(DEFAULTS.workflow)} @ ${escapeHtml(DEFAULTS.ref)}</div>
+      </div>
 
       <div class="btn-row">
         <button type="submit" class="btn btn-primary">Sign in</button>
-      </div>
-    </form>
-  `;
-}
-
-function renderVerifyForm() {
-  const email = state.pendingAuth?.identity?.email || "operator";
-  return `
-    <h2>Verify 2FA</h2>
-    <p class="help">Enter the current 6-digit authenticator code for ${escapeHtml(email)}.</p>
-    <form id="verify-form" autocomplete="off">
-      <div class="field">
-        <label for="otpCode">One-time code</label>
-        <input id="otpCode" class="input mono" name="otpCode" type="text" pattern="[0-9]{6}" maxlength="6" inputmode="numeric" required />
-      </div>
-      <div class="btn-row">
-        <button type="submit" class="btn btn-primary">Verify</button>
-        <button type="button" class="btn btn-secondary" data-action="back-login">Back</button>
       </div>
     </form>
   `;
@@ -858,85 +750,34 @@ function renderSettingsView() {
   const s = state.session;
   return `
     <section class="card">
-      <h3>Session and Connectors</h3>
-      <p class="help">Update connector settings in-session. Save to apply immediately.</p>
+      <h3>Connector Tokens</h3>
+      <p class="help">Only API tokens are editable in-session. Other config values are loaded from runtime defaults.</p>
       <form id="settings-form">
         <div class="split">
           <div class="field">
-            <label>Email</label>
-            <input class="input" name="email" value="${escapeHtml(s.identity.email)}" />
-          </div>
-          <div class="field">
-            <label>Timezone</label>
-            <input class="input" name="timezone" value="${escapeHtml(s.settings.timezone)}" />
-          </div>
-        </div>
-        <div class="split">
-          <div class="field">
             <label>Airtable token</label>
-            <input class="input mono" name="airtableToken" type="password" value="${escapeHtml(s.airtable.token)}" />
+            <input class="input mono" name="airtableToken" type="password" required value="${escapeHtml(s.airtable.token)}" />
           </div>
-          <div class="field">
-            <label>Airtable base ID</label>
-            <input class="input mono" name="airtableBaseId" value="${escapeHtml(s.airtable.baseId)}" />
-          </div>
-        </div>
-        <div class="split">
-          <div class="field">
-            <label>Posts table</label>
-            <input class="input" name="postsTable" value="${escapeHtml(s.airtable.postsTable)}" />
-          </div>
-          <div class="field">
-            <label>Jobs table</label>
-            <input class="input" name="jobsTable" value="${escapeHtml(s.airtable.jobsTable)}" />
-          </div>
-        </div>
-        <div class="split">
-          <div class="field">
-            <label>Published table</label>
-            <input class="input" name="publishedTable" value="${escapeHtml(s.airtable.publishedTable)}" />
-          </div>
-          <div class="field">
-            <label>Threads username</label>
-            <input class="input" name="threadsUsername" value="${escapeHtml(s.airtable.threadsUsername || "")}" />
-          </div>
-        </div>
-        <div class="hr"></div>
-        <div class="split">
           <div class="field">
             <label>GitHub token</label>
-            <input class="input mono" name="githubToken" type="password" value="${escapeHtml(s.github.token)}" />
-          </div>
-          <div class="field">
-            <label>Workflow file/ID</label>
-            <input class="input" name="workflow" value="${escapeHtml(s.github.workflow)}" />
-          </div>
-        </div>
-        <div class="split">
-          <div class="field">
-            <label>Repo owner</label>
-            <input class="input" name="githubOwner" value="${escapeHtml(s.github.owner)}" />
-          </div>
-          <div class="field">
-            <label>Repo name</label>
-            <input class="input" name="githubRepo" value="${escapeHtml(s.github.repo)}" />
-          </div>
-        </div>
-        <div class="split">
-          <div class="field">
-            <label>Workflow ref</label>
-            <input class="input" name="workflowRef" value="${escapeHtml(s.github.ref)}" />
-          </div>
-          <div class="field">
-            <label>Default lookback days</label>
-            <input class="input" type="number" min="1" name="lookbackDays" value="${escapeHtml(String(s.settings.lookbackDays))}" />
+            <input class="input mono" name="githubToken" type="password" required value="${escapeHtml(s.github.token)}" />
           </div>
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary" type="submit">Save Settings</button>
+          <button class="btn btn-primary" type="submit">Save Tokens</button>
           <button class="btn btn-secondary" type="button" data-action="refresh-data">Refresh Data</button>
         </div>
       </form>
+      <div class="hr"></div>
+      <h4>Runtime Configuration (read-only)</h4>
+      <div class="kv">
+        <div><div class="muted">Airtable base ID</div><div class="mono">${escapeHtml(s.airtable.baseId || "-")}</div></div>
+        <div><div class="muted">Posts table</div><div>${escapeHtml(s.airtable.postsTable || "-")}</div></div>
+        <div><div class="muted">Jobs table</div><div>${escapeHtml(s.airtable.jobsTable || "-")}</div></div>
+        <div><div class="muted">Published table</div><div>${escapeHtml(s.airtable.publishedTable || "-")}</div></div>
+        <div><div class="muted">GitHub repo</div><div class="mono">${escapeHtml([s.github.owner, s.github.repo].filter(Boolean).join("/") || "-")}</div></div>
+        <div><div class="muted">Workflow</div><div class="mono">${escapeHtml(`${s.github.workflow || "-"} @ ${s.github.ref || "-"}`)}</div></div>
+      </div>
     </section>
   `;
 }
@@ -1009,7 +850,7 @@ function renderModal(modal) {
             </div>
             <div class="field">
               <label>Lookback days override (optional)</label>
-              <input class="input" type="number" min="1" name="lookbackDays" value="${escapeHtml(String(defaults.lookbackDays || state.session.settings.lookbackDays || DEFAULTS.lookbackDays))}" />
+              <input class="input" type="number" min="1" name="lookbackDays" value="${escapeHtml(String(defaults.lookbackDays || state.session?.settings?.lookbackDays || DEFAULTS.lookbackDays))}" />
             </div>
             <div class="btn-row">
               <button class="btn btn-primary" type="submit" ${state.posting ? "disabled" : ""}>${state.posting ? "Triggering..." : "Trigger Publish"}</button>
@@ -1039,11 +880,6 @@ function handleGlobalClick(event) {
 
   const action = target.getAttribute("data-action");
 
-  if (action === "back-login") {
-    state.pendingAuth = null;
-    navigate("/login");
-    return;
-  }
   if (action === "close-modal") {
     state.modal = null;
     renderOverlays();
@@ -1163,11 +999,6 @@ async function handleGlobalSubmit(event) {
     await submitLogin(event.target);
     return;
   }
-  if (event.target.id === "verify-form") {
-    event.preventDefault();
-    await submitVerify(event.target);
-    return;
-  }
   if (event.target.id === "post-form") {
     event.preventDefault();
     await submitPostForm(event.target);
@@ -1186,81 +1017,62 @@ async function handleGlobalSubmit(event) {
 
 async function submitLogin(form) {
   const fd = new FormData(form);
-  const email = String(fd.get("email") || "").trim();
-  const password = String(fd.get("password") || "").trim();
-  const totpSecret = String(fd.get("totpSecret") || "").trim();
+  const airtableToken = String(fd.get("airtableToken") || "").trim();
+  const githubToken = String(fd.get("githubToken") || "").trim();
+  const operatorEmail = String(DEFAULTS.operatorEmail || "operator").trim();
 
-  if (!email || !password) {
-    pushToast("Email and password are required.", "warning");
+  if (!airtableToken || !githubToken) {
+    pushToast("Airtable and GitHub tokens are required.", "warning");
     return;
   }
 
   const payload = {
-    identity: { userId: email.toLowerCase(), email, role: "admin" },
+    identity: { userId: operatorEmail.toLowerCase(), email: operatorEmail, role: "admin" },
     auth: {
-      twoFactorEnabled: !!totpSecret,
-      twoFactorVerified: !totpSecret,
+      twoFactorEnabled: false,
+      twoFactorVerified: true,
       sessionExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
     },
-    secrets: { password, totpSecret },
     airtable: {
-      token: String(fd.get("airtableToken") || "").trim(),
-      baseId: String(fd.get("airtableBaseId") || "").trim(),
-      postsTable: String(fd.get("postsTable") || "").trim() || DEFAULTS.postsTable,
-      jobsTable: String(fd.get("jobsTable") || "").trim() || DEFAULTS.jobsTable,
-      publishedTable: String(fd.get("publishedTable") || "").trim() || DEFAULTS.publishedTable,
-      threadsUsername: String(fd.get("threadsUsername") || "").trim(),
+      token: airtableToken,
+      baseId: DEFAULTS.airtableBaseId,
+      postsTable: DEFAULTS.postsTable,
+      jobsTable: DEFAULTS.jobsTable,
+      publishedTable: DEFAULTS.publishedTable,
+      threadsUsername: DEFAULTS.threadsUsername,
     },
     github: {
-      token: String(fd.get("githubToken") || "").trim(),
-      owner: String(fd.get("githubOwner") || "").trim(),
-      repo: String(fd.get("githubRepo") || "").trim(),
-      workflow: String(fd.get("workflow") || "").trim() || DEFAULTS.workflow,
-      ref: String(fd.get("workflowRef") || "").trim() || DEFAULTS.ref,
+      token: githubToken,
+      owner: DEFAULTS.githubOwner,
+      repo: DEFAULTS.githubRepo,
+      workflow: DEFAULTS.workflow,
+      ref: DEFAULTS.ref,
     },
     settings: {
-      lookbackDays: Number(fd.get("lookbackDays") || DEFAULTS.lookbackDays),
-      timezone: String(fd.get("timezone") || "").trim() || DEFAULTS.timezone,
+      lookbackDays: DEFAULTS.lookbackDays,
+      timezone: DEFAULTS.timezone,
     },
   };
 
-  if (!payload.airtable.token || !payload.airtable.baseId || !payload.github.token || !payload.github.owner || !payload.github.repo) {
-    pushToast("Airtable and GitHub connector fields are required.", "warning");
+  const missingRuntimeConfig = [];
+  if (!payload.airtable.baseId) missingRuntimeConfig.push("Airtable base ID");
+  if (!payload.github.owner) missingRuntimeConfig.push("GitHub owner");
+  if (!payload.github.repo) missingRuntimeConfig.push("GitHub repo");
+  if (missingRuntimeConfig.length > 0) {
+    pushToast(`Missing runtime config: ${missingRuntimeConfig.join(", ")}. Set ECR_DASHBOARD_CONFIG or URL params.`, "error", 10_000);
     return;
   }
 
-  const rememberProfile = fd.get("rememberProfile") === "on";
   const rememberSecrets = fd.get("rememberSecrets") === "on";
   const profileToSave = {
-    email,
-    totpSecret: rememberSecrets ? totpSecret : "",
-    postsTable: payload.airtable.postsTable,
-    jobsTable: payload.airtable.jobsTable,
-    publishedTable: payload.airtable.publishedTable,
-    threadsUsername: payload.airtable.threadsUsername,
-    githubOwner: payload.github.owner,
-    githubRepo: payload.github.repo,
-    workflow: payload.github.workflow,
-    workflowRef: payload.github.ref,
-    lookbackDays: payload.settings.lookbackDays,
-    timezone: payload.settings.timezone,
-    rememberProfile,
     rememberSecrets,
     airtableToken: rememberSecrets ? payload.airtable.token : "",
-    airtableBaseId: rememberSecrets ? payload.airtable.baseId : "",
     githubToken: rememberSecrets ? payload.github.token : "",
   };
-  if (rememberProfile) {
+  if (rememberSecrets) {
     saveProfile(profileToSave);
   } else {
     localStorage.removeItem(STORAGE_KEYS.PROFILE);
-  }
-
-  if (totpSecret) {
-    state.pendingAuth = payload;
-    navigate("/login/verify");
-    pushToast("Enter your 2FA code to continue.", "info");
-    return;
   }
 
   state.session = {
@@ -1271,76 +1083,34 @@ async function submitLogin(form) {
     settings: payload.settings,
   };
   saveSession(state.session);
-  state.pendingAuth = null;
 
   await refreshData({ silent: false });
   navigate("/dashboard");
   pushToast("Signed in successfully.", "success");
 }
 
-async function submitVerify(form) {
-  const pending = state.pendingAuth;
-  if (!pending) {
-    navigate("/login");
-    return;
-  }
-  const fd = new FormData(form);
-  const code = String(fd.get("otpCode") || "").trim();
-  const secret = pending.secrets?.totpSecret || "";
-  const valid = await verifyTotpCode(secret, code);
-  if (!valid) {
-    pushToast("Invalid or expired 2FA code.", "error");
-    return;
-  }
-
-  state.session = {
-    identity: pending.identity,
-    auth: {
-      ...pending.auth,
-      twoFactorVerified: true,
-    },
-    airtable: pending.airtable,
-    github: pending.github,
-    settings: pending.settings,
-  };
-  saveSession(state.session);
-  state.pendingAuth = null;
-  await refreshData({ silent: false });
-  navigate("/dashboard");
-  pushToast("2FA verified. Signed in.", "success");
-}
-
 async function submitSettings(form) {
   const fd = new FormData(form);
+  const airtableToken = String(fd.get("airtableToken") || "").trim();
+  const githubToken = String(fd.get("githubToken") || "").trim();
+  if (!airtableToken || !githubToken) {
+    pushToast("Both tokens are required.", "warning");
+    return;
+  }
+
   state.session = {
     ...state.session,
-    identity: {
-      ...state.session.identity,
-      email: String(fd.get("email") || state.session.identity.email).trim(),
-      userId: String(fd.get("email") || state.session.identity.email).trim().toLowerCase(),
-    },
     airtable: {
-      token: String(fd.get("airtableToken") || "").trim(),
-      baseId: String(fd.get("airtableBaseId") || "").trim(),
-      postsTable: String(fd.get("postsTable") || DEFAULTS.postsTable).trim(),
-      jobsTable: String(fd.get("jobsTable") || DEFAULTS.jobsTable).trim(),
-      publishedTable: String(fd.get("publishedTable") || DEFAULTS.publishedTable).trim(),
-      threadsUsername: String(fd.get("threadsUsername") || "").trim(),
+      ...state.session.airtable,
+      token: airtableToken,
     },
     github: {
-      token: String(fd.get("githubToken") || "").trim(),
-      owner: String(fd.get("githubOwner") || "").trim(),
-      repo: String(fd.get("githubRepo") || "").trim(),
-      workflow: String(fd.get("workflow") || DEFAULTS.workflow).trim(),
-      ref: String(fd.get("workflowRef") || DEFAULTS.ref).trim(),
-    },
-    settings: {
-      lookbackDays: Number(fd.get("lookbackDays") || DEFAULTS.lookbackDays),
-      timezone: String(fd.get("timezone") || DEFAULTS.timezone).trim(),
+      ...state.session.github,
+      token: githubToken,
     },
   };
   saveSession(state.session);
-  pushToast("Settings saved.", "success");
+  pushToast("Tokens saved.", "success");
   await refreshData({ silent: true });
   render();
 }
@@ -1406,7 +1176,7 @@ async function submitQuickPublish(form) {
   const fd = new FormData(form);
   const postRecordId = String(fd.get("postRecordId") || "").trim();
   const targets = String(fd.get("targets") || "both");
-  const lookbackDays = String(fd.get("lookbackDays") || state.session.settings.lookbackDays || DEFAULTS.lookbackDays).trim();
+  const lookbackDays = String(fd.get("lookbackDays") || state.session?.settings?.lookbackDays || DEFAULTS.lookbackDays).trim();
 
   if (!postRecordId) {
     pushToast("Select a post to publish.", "warning");
@@ -1809,62 +1579,74 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function verifyTotpCode(base32Secret, code) {
-  const normalized = String(code || "").replace(/\s+/g, "");
-  if (!/^\d{6}$/.test(normalized)) return false;
-  const steps = [0, -1, 1];
-  for (const offset of steps) {
-    const expected = await generateTotp(base32Secret, offset);
-    if (!expected) return false;
-    if (expected === normalized) return true;
-  }
-  return false;
+function resolveDefaults() {
+  const runtime = readRuntimeConfig();
+  const detectedRepo = detectGitHubRepoFromLocation();
+  const timezoneFallback = Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
+
+  return {
+    postsTable: readFirstNonEmpty(runtime.postsTable, "Posts"),
+    jobsTable: readFirstNonEmpty(runtime.jobsTable, "Jobs"),
+    publishedTable: readFirstNonEmpty(runtime.publishedTable, "Published"),
+    workflow: readFirstNonEmpty(runtime.workflow, "scheduler.yml"),
+    ref: readFirstNonEmpty(runtime.ref, "main"),
+    lookbackDays: toPositiveInt(runtime.lookbackDays, 90),
+    timezone: readFirstNonEmpty(runtime.timezone, timezoneFallback),
+    operatorEmail: readFirstNonEmpty(runtime.operatorEmail, "operator"),
+    airtableBaseId: readFirstNonEmpty(runtime.airtableBaseId, ""),
+    githubOwner: readFirstNonEmpty(runtime.githubOwner, detectedRepo.owner),
+    githubRepo: readFirstNonEmpty(runtime.githubRepo, detectedRepo.repo),
+    threadsUsername: readFirstNonEmpty(runtime.threadsUsername, ""),
+  };
 }
 
-async function generateTotp(base32Secret, timeOffsetSteps = 0) {
-  const keyBytes = base32ToBytes(base32Secret);
-  if (keyBytes.length === 0) return "";
+function readRuntimeConfig() {
+  const params = new URLSearchParams(typeof location !== "undefined" ? location.search : "");
+  const rawGlobal = typeof window !== "undefined" ? window.ECR_DASHBOARD_CONFIG || window.__ECR_DASHBOARD_CONFIG__ : null;
+  const globalConfig = rawGlobal && typeof rawGlobal === "object" ? rawGlobal : {};
 
-  const timestep = 30;
-  const counter = Math.floor(Date.now() / 1000 / timestep) + timeOffsetSteps;
-  const msg = new ArrayBuffer(8);
-  const dv = new DataView(msg);
-  const high = Math.floor(counter / 2 ** 32);
-  const low = counter >>> 0;
-  dv.setUint32(0, high);
-  dv.setUint32(4, low);
-
-  const key = await crypto.subtle.importKey(
-    "raw",
-    keyBytes,
-    { name: "HMAC", hash: "SHA-1" },
-    false,
-    ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, msg);
-  const bytes = new Uint8Array(sig);
-  const offset = bytes[bytes.length - 1] & 0x0f;
-  const binary =
-    ((bytes[offset] & 0x7f) << 24) |
-    ((bytes[offset + 1] & 0xff) << 16) |
-    ((bytes[offset + 2] & 0xff) << 8) |
-    (bytes[offset + 3] & 0xff);
-  const otp = (binary % 1_000_000).toString().padStart(6, "0");
-  return otp;
+  return {
+    airtableBaseId: readFirstNonEmpty(params.get("airtable_base_id"), params.get("airtableBaseId"), globalConfig.airtableBaseId),
+    postsTable: readFirstNonEmpty(params.get("posts_table"), params.get("postsTable"), globalConfig.postsTable),
+    jobsTable: readFirstNonEmpty(params.get("jobs_table"), params.get("jobsTable"), globalConfig.jobsTable),
+    publishedTable: readFirstNonEmpty(params.get("published_table"), params.get("publishedTable"), globalConfig.publishedTable),
+    threadsUsername: readFirstNonEmpty(params.get("threads_username"), params.get("threadsUsername"), globalConfig.threadsUsername),
+    githubOwner: readFirstNonEmpty(params.get("github_owner"), params.get("githubOwner"), globalConfig.githubOwner),
+    githubRepo: readFirstNonEmpty(params.get("github_repo"), params.get("githubRepo"), globalConfig.githubRepo),
+    workflow: readFirstNonEmpty(params.get("workflow"), globalConfig.workflow),
+    ref: readFirstNonEmpty(params.get("workflow_ref"), params.get("ref"), globalConfig.ref),
+    lookbackDays: readFirstNonEmpty(params.get("lookback_days"), params.get("lookbackDays"), globalConfig.lookbackDays),
+    timezone: readFirstNonEmpty(params.get("timezone"), globalConfig.timezone),
+    operatorEmail: readFirstNonEmpty(params.get("operator_email"), params.get("operatorEmail"), globalConfig.operatorEmail),
+  };
 }
 
-function base32ToBytes(base32) {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  const cleaned = String(base32 || "").toUpperCase().replace(/=+$/g, "").replace(/[^A-Z2-7]/g, "");
-  let bits = "";
-  for (const ch of cleaned) {
-    const idx = alphabet.indexOf(ch);
-    if (idx === -1) continue;
-    bits += idx.toString(2).padStart(5, "0");
+function detectGitHubRepoFromLocation() {
+  if (typeof location === "undefined") return { owner: "", repo: "" };
+  const host = String(location.hostname || "").toLowerCase();
+  if (!host.endsWith(".github.io")) return { owner: "", repo: "" };
+
+  const owner = host.split(".")[0] || "";
+  const pathParts = String(location.pathname || "/")
+    .split("/")
+    .filter(Boolean)
+    .map((part) => decodeURIComponent(part));
+
+  if (!owner) return { owner: "", repo: "" };
+  if (pathParts.length === 0) return { owner, repo: `${owner}.github.io` };
+  return { owner, repo: pathParts[0] };
+}
+
+function readFirstNonEmpty(...values) {
+  for (const value of values) {
+    const normalized = String(value ?? "").trim();
+    if (normalized) return normalized;
   }
-  const out = [];
-  for (let i = 0; i + 8 <= bits.length; i += 8) {
-    out.push(parseInt(bits.slice(i, i + 8), 2));
-  }
-  return new Uint8Array(out);
+  return "";
+}
+
+function toPositiveInt(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.floor(parsed);
 }
