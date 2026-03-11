@@ -20,13 +20,22 @@ class AirtableClient{
   const records=await this.base(this.jobsTable).select({filterByFormula,maxRecords:1}).firstPage();
   return records[0]||null;
  }
- async listEligiblePosts(cutoffISO){
+ async listEligiblePosts(cutoffISO,opts={}){
+  const requireX=opts.requireX!==false;
+  const requireThreads=opts.requireThreads!==false;
+  const clauses=['{Status} = "Active"'];
+
+  if(requireX){
+   clauses.push('FIND("X", ARRAYJOIN({Platforms})) > 0');
+   clauses.push(`OR({LastPostedOnXTime} = "", {LastPostedOnXTime} <= DATETIME_PARSE("${cutoffISO}"))`);
+  }
+  if(requireThreads){
+   clauses.push('FIND("Threads", ARRAYJOIN({Platforms})) > 0');
+   clauses.push(`OR({LastPostedOnThreadsTime} = "", {LastPostedOnThreadsTime} <= DATETIME_PARSE("${cutoffISO}"))`);
+  }
+
   const filterByFormula=`AND(
-    {Status} = "Active",
-    FIND("X", ARRAYJOIN({Platforms})) > 0,
-    FIND("Threads", ARRAYJOIN({Platforms})) > 0,
-    OR({LastPostedOnXTime} = "", {LastPostedOnXTime} <= DATETIME_PARSE("${cutoffISO}")),
-    OR({LastPostedOnThreadsTime} = "", {LastPostedOnThreadsTime} <= DATETIME_PARSE("${cutoffISO}"))
+    ${clauses.join(",\n    ")}
   )`;
   return await this.base(this.postsTable).select({filterByFormula}).all();
  }

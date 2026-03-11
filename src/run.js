@@ -3,6 +3,9 @@ const { AirtableClient, isoNow, runKeyUTC } = require("./airtable");
 const { weightedPick } = require("./picker");
 const { postX } = require("./platforms/x");
 const { postThreads } = require("./platforms/threads");
+const TARGET_THREADS = "threads";
+const TARGET_X = "x";
+const DEFAULT_TARGETS = [TARGET_THREADS, TARGET_X];
 
 function parseDirectPostIdFromArgs(argv = process.argv.slice(2)) {
   for (let i = 0; i < argv.length; i += 1) {
@@ -20,6 +23,83 @@ function parseDirectPostIdFromArgs(argv = process.argv.slice(2)) {
     }
   }
   return "";
+}
+
+function parseTargetsFromArgs(argv = process.argv.slice(2)) {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = (argv[i] || "").trim();
+    if (!arg) continue;
+
+    if (arg === "--targets" || arg === "--platforms") {
+      return (argv[i + 1] || "").trim();
+    }
+    if (arg.startsWith("--targets=")) {
+      return arg.slice("--targets=".length).trim();
+    }
+    if (arg.startsWith("--platforms=")) {
+      return arg.slice("--platforms=".length).trim();
+    }
+  }
+  return "";
+}
+
+function normalizeTargets(rawTargets) {
+  const raw = String(rawTargets || "").trim();
+  if (!raw) return new Set(DEFAULT_TARGETS);
+
+  const normalized = new Set();
+  const tokens = raw
+    .split(/[,\s|]+/g)
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+
+  for (const token of tokens) {
+    if (token === "both" || token === "all") {
+      normalized.add(TARGET_THREADS);
+      normalized.add(TARGET_X);
+      continue;
+    }
+    if (token === "threads" || token === "thread") {
+      normalized.add(TARGET_THREADS);
+      continue;
+    }
+    if (token === "x" || token === "twitter") {
+      normalized.add(TARGET_X);
+      continue;
+    }
+    throw new Error(
+      `Unsupported target "${token}". Use one or more of: threads, x (or both/all).`
+    );
+  }
+
+  if (normalized.size === 0) {
+    throw new Error("No valid targets were provided.");
+  }
+
+  return normalized;
+}
+
+function getPostPlatforms(record) {
+  const raw = record?.fields?.Platforms;
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .map((v) => String(v || "").trim().toLowerCase())
+    .filter(Boolean)
+    .map((v) => (v === "thread" ? "threads" : v));
+}
+
+function ensurePostSupportsTargets(record, targets) {
+  const platforms = new Set(getPostPlatforms(record));
+
+  if (targets.has(TARGET_THREADS) && !platforms.has("threads")) {
+    throw new Error(
+      `Selected post ${record?.id || ""} does not include Threads in {Platforms}.`
+    );
+  }
+  if (targets.has(TARGET_X) && !platforms.has("x")) {
+    throw new Error(`Selected post ${record?.id || ""} does not include X in {Platforms}.`);
+  }
 }
 
 function buildRunKey(nowUTC, directPostId) {
@@ -108,6 +188,15 @@ async function main() {
   const nowUTC = DateTime.now().toUTC();
   const nowUTCISO = isoNow();
   const directPostId = (parseDirectPostIdFromArgs() || process.env.DIRECT_POST_ID || "").trim();
+  const rawTargets = (
+    parseTargetsFromArgs() ||
+    process.env.DIRECT_TARGET_PLATFORMS ||
+    process.env.TARGET_PLATFORMS ||
+    ""
+  ).trim();
+  const targets = normalizeTargets(rawTargets);
+  const shouldPostThreads = targets.has(TARGET_THREADS);
+  const shouldPostX = targets.has(TARGET_X);
   const runKey = buildRunKey(nowUTC, directPostId);
 
   const lookbackDays = Number(process.env.LOOKBACK_DAYS || "90");
@@ -129,9 +218,13 @@ async function main() {
         `DIRECT_POST_ID "${directPostId}" was not found. Use Airtable record ID (rec...) or numeric {Id}.`
       );
     }
+    ensurePostSupportsTargets(chosen, targets);
     console.log(`Direct override enabled. Identifier "${directPostId}" mapped to post record ${chosen.id}.`);
   } else {
-    const candidates = await airtable.listEligiblePosts(cutoffISO);
+    const candidates = await airtable.listEligiblePosts(cutoffISO, {
+      requireX: shouldPostX,
+      requireThreads: shouldPostThreads,
+    });
 
     if (!candidates || candidates.length === 0) {
       const skipJob = await airtable.createJob(runKey, undefined, nowUTCISO);
@@ -159,13 +252,23 @@ async function main() {
   const text = chosen.fields?.Text || "";
   const partsFromDelimiters = splitPartsFromText(text);
 
-  const threadsParts = buildThreadsPartsFromPostText(partsFromDelimiters);
-  const xParts = buildXPartsFromPostText(partsFromDelimiters);
+  const threadsParts = shouldPostThreads
+    ? buildThreadsPartsFromPostText(partsFromDelimiters)
+    : [];
+  const xParts = shouldPostX ? buildXPartsFromPostText(partsFromDelimiters) : [];
 
   console.log(`Selected post record: ${postRecordId}`);
+  console.log(
+    `Target platforms: ${[
+      shouldPostThreads ? "Threads" : null,
+      shouldPostX ? "X" : null,
+    ]
+      .filter(Boolean)
+      .join(", ")}`
+  );
   console.log(`Selected post text:\n${text}`);
-  logPostParts("Threads", threadsParts);
-  logPostParts("X", xParts);
+  if (shouldPostThreads) logPostParts("Threads", threadsParts);
+  if (shouldPostX) logPostParts("X", xParts);
 
   const job = await airtable.createJob(runKey, postRecordId, nowUTCISO);
 
@@ -174,72 +277,87 @@ async function main() {
   let xOk = false;
   let xId = "";
 
-  try {
-    const threadsRes = await postThreads(threadsParts);
-    threadsOk = !!threadsRes?.ok;
-    threadsId = threadsRes?.postId || "";
-    const threadsLink = buildPlatformLink("Threads", threadsId, threadsRes?.link || threadsRes?.url || "");
+  if (shouldPostThreads) {
+    try {
+      const threadsRes = await postThreads(threadsParts);
+      threadsOk = !!threadsRes?.ok;
+      threadsId = threadsRes?.postId || "";
+      const threadsLink = buildPlatformLink("Threads", threadsId, threadsRes?.link || threadsRes?.url || "");
 
-    await airtable.createPublished(
-      job.id,
-      "Threads",
-      threadsOk,
-      threadsRes?.error || "",
-      threadsId
-    );
+      await airtable.createPublished(
+        job.id,
+        "Threads",
+        threadsOk,
+        threadsRes?.error || "",
+        threadsId
+      );
 
-    if (threadsOk) {
-      console.log(`[Threads] Published successfully. Post ID: ${threadsId || "n/a"}. Link: ${threadsLink || "n/a"}`);
-    } else {
-      console.warn(`[Threads] Publish failed. Error: ${threadsRes?.error || "Unknown error."}`);
+      if (threadsOk) {
+        console.log(`[Threads] Published successfully. Post ID: ${threadsId || "n/a"}. Link: ${threadsLink || "n/a"}`);
+      } else {
+        console.warn(`[Threads] Publish failed. Error: ${threadsRes?.error || "Unknown error."}`);
+      }
+    } catch (err) {
+      threadsOk = false;
+      console.warn(`[Threads] Publish threw an error: ${String(err)}`);
+      await airtable.createPublished(job.id, "Threads", false, String(err), "");
     }
-  } catch (err) {
-    threadsOk = false;
-    console.warn(`[Threads] Publish threw an error: ${String(err)}`);
-    await airtable.createPublished(job.id, "Threads", false, String(err), "");
   }
 
-  try {
-    const xRes = await postX(xParts);
-    xOk = !!xRes?.ok;
-    xId = xRes?.postId || "";
-    const xLink = buildPlatformLink("X", xId, xRes?.link || xRes?.url || "");
+  if (shouldPostX) {
+    try {
+      const xRes = await postX(xParts);
+      xOk = !!xRes?.ok;
+      xId = xRes?.postId || "";
+      const xLink = buildPlatformLink("X", xId, xRes?.link || xRes?.url || "");
 
-    await airtable.createPublished(
-      job.id,
-      "X",
-      xOk,
-      xRes?.error || "",
-      xId
-    );
+      await airtable.createPublished(
+        job.id,
+        "X",
+        xOk,
+        xRes?.error || "",
+        xId
+      );
 
-    if (xOk) {
-      console.log(`[X] Published successfully. Post ID: ${xId || "n/a"}. Link: ${xLink || "n/a"}`);
-    } else {
-      console.warn(`[X] Publish failed. Error: ${xRes?.error || "Unknown error."}`);
+      if (xOk) {
+        console.log(`[X] Published successfully. Post ID: ${xId || "n/a"}. Link: ${xLink || "n/a"}`);
+      } else {
+        console.warn(`[X] Publish failed. Error: ${xRes?.error || "Unknown error."}`);
+      }
+    } catch (err) {
+      xOk = false;
+      console.warn(`[X] Publish threw an error: ${String(err)}`);
+      await airtable.createPublished(job.id, "X", false, String(err), "");
     }
-  } catch (err) {
-    xOk = false;
-    console.warn(`[X] Publish threw an error: ${String(err)}`);
-    await airtable.createPublished(job.id, "X", false, String(err), "");
   }
 
   const updateCooldown = {};
-  if (xOk) updateCooldown.LastPostedOnXTime = isoNow();
-  if (threadsOk) updateCooldown.LastPostedOnThreadsTime = isoNow();
+  if (shouldPostX && xOk) updateCooldown.LastPostedOnXTime = isoNow();
+  if (shouldPostThreads && threadsOk) updateCooldown.LastPostedOnThreadsTime = isoNow();
   if (Object.keys(updateCooldown).length > 0) {
     await airtable.updatePostCooldown(postRecordId, updateCooldown);
   }
 
   const end = isoNow();
-  const jobResult = threadsOk && xOk ? "Success" : threadsOk || xOk ? "Partial" : "Failed";
+  const attemptedCount = Number(shouldPostThreads) + Number(shouldPostX);
+  const successCount = Number(shouldPostThreads && threadsOk) + Number(shouldPostX && xOk);
+  const jobResult =
+    successCount === attemptedCount
+      ? "Success"
+      : successCount === 0
+        ? "Failed"
+        : "Partial";
 
   await airtable.updateJob(job.id, {
     EndTime: end,
     Result: jobResult
   });
 
-  console.log(`Job ${job.id} finished with result ${jobResult}. Threads=${threadsOk}, X=${xOk}`);
+  console.log(
+    `Job ${job.id} finished with result ${jobResult}. ` +
+      `Threads=${shouldPostThreads ? threadsOk : "not-targeted"}, ` +
+      `X=${shouldPostX ? xOk : "not-targeted"}`
+  );
 }
 
 main().catch(err => {

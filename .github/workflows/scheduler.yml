@@ -15,6 +15,10 @@ on:
         description: "Optional direct post override (Airtable record ID or numeric {Id})"
         required: false
         default: ""
+      target_platforms:
+        description: "Optional publish targets (threads,x | threads | x)"
+        required: false
+        default: "threads,x"
 
 jobs:
   run:
@@ -51,6 +55,7 @@ jobs:
 
           LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '90' }}
           DIRECT_POST_ID: ${{ github.event.inputs.post_id || '' }}
+          DIRECT_TARGET_PLATFORMS: ${{ github.event.inputs.target_platforms || 'threads,x' }}
         run: |
           mkdir -p artifacts
           set -o pipefail

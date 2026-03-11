@@ -104,20 +104,43 @@ You can also run the workflow manually from the Actions tab:
 - Click `Run workflow`.
 - Optionally set `lookback_days` for that run (defaults to `90`).
 - Optionally set `post_id` to directly publish a specific post by Airtable record ID (`rec...`) or numeric `{Id}`.
+- Optionally set `target_platforms` to `threads,x` (default), `threads`, or `x`.
 
 ### Direct post override
 Use `DIRECT_POST_ID` (or CLI `--post-id`) to bypass weighted selection and post one specific record.
+Use `DIRECT_TARGET_PLATFORMS` (or CLI `--targets`) to control publish targets.
 
 Examples:
 ```bash
 DIRECT_POST_ID=rec1234567890abc node src/run.js
 node src/run.js --post-id 42
+DIRECT_POST_ID=rec1234567890abc DIRECT_TARGET_PLATFORMS=x node src/run.js
+node src/run.js --post-id 42 --targets threads
 ```
 
 Notes:
 - `DIRECT_POST_ID` accepts an Airtable record ID (`rec...`) or numeric `Id` field from `Posts`.
+- `DIRECT_TARGET_PLATFORMS` accepts `threads`, `x`, or comma-separated values (`threads,x`).
 - When set, cooldown eligibility filters are skipped for selection; the chosen post is posted immediately.
 - Successful publishes still update `LastPostedOnThreadsTime` and `LastPostedOnXTime`.
+
+## GitHub Pages admin dashboard
+This repo includes a static admin dashboard in `docs/` that can be hosted on GitHub Pages.
+
+Features:
+- Login/session gate with optional TOTP verification step.
+- Post management (view/add/edit/delete) via Airtable API.
+- Manual publish dispatch to GitHub Actions (`X`, `Threads`, or both).
+- Run + publish attempt visibility from `Jobs` and `Published`.
+
+Deploy:
+1. In GitHub repo settings, enable Pages and select `Deploy from a branch`.
+2. Use your default branch and the `/docs` folder.
+3. Open the published Pages URL and sign in with your Airtable/GitHub credentials.
+
+Important:
+- GitHub Pages is static hosting; credentials are used client-side in your browser session.
+- Use a dedicated least-privilege Airtable token and GitHub token.
 
 ## Notes
 - This repo currently posts text only.
